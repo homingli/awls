@@ -10,40 +10,48 @@ class AWSInventoryTable(object):
     def __init__(self, aws_profile, aws_region):
         self.session = boto3.session.Session(profile_name=aws_profile, region_name=aws_region)
 
-    def generate_table(self, query, maintenance_tags):
+    def generate_table(self, query, type):
         ec2 = self.session.resource('ec2')
-        instances = ec2.instances.filter()
+
+        # apply filter where appropriate
+        # ec2filter = [{'Name':'instance-state-name','Values':['running']}]
+        ec2filter = [{'Name':'instance-type','Values':[type]}] if type is not None else []
+
+        instances = ec2.instances.filter(Filters=ec2filter)
         tbl_list = []
         
         for instance in instances:
             # Using a flag so we don't add data to the list we don't actually want
-            if query is None:
-                found = True
-                aws_name = ""
-            else:
-                found = False
-            if instance.tags is not None:
+            # consider everything found if no specific query
+            found = True if query is None else False
+            aws_name = None
+            if instance.tags is not None: 
                 for tag in instance.tags:
                     if tag['Key'] == "Name":
-                        aws_name = tag['Value']
-                        if query is not None and query in tag['Value']:
-                        # if a query was passed, try to find instances that match
-                            found = True
+                        aws_name = tag['Value'] 
 
-                    if tag['Key'] == "Maintenance":
-                        aws_maintenance_tags = tag['Value']
+                    # matching any tag
+                    if query is not None and query in tag['Value']:
+                        found = True
+
+                    aws_owner_tag = tag['Value'] if tag['Key'] == "Owner" or tag['Key'] == "owner" else None
+                    aws_maintenance_tags = tag['Value'] if tag['Key'] == "Maintenance" else None
 
             if found:
                 aws_key_name = "" if instance.key_name is None else instance.key_name[:20] + (instance.key_name[20:] and '..') 
-                data = [instance.state["Name"], aws_name, instance.id, instance.private_ip_address, instance.public_ip_address, instance.instance_type, aws_key_name, instance.launch_time] 
-                headers = ["State", "Name", "Instance ID","Private IP", "Public IP", "Type", "Key Name", "Launched At"]
-                if maintenance_tags:
+                data = [instance.launch_time, instance.state["Name"], aws_name, instance.id, instance.private_ip_address, instance.public_ip_address, instance.instance_type, aws_key_name, aws_owner_tag] 
+                headers = ["Launched At","State", "Name", "Instance ID","Private IP", "Public IP", "Type", "Key Name", "Owner"]
+                if aws_maintenance_tags is not None:
                     data.append(aws_maintenance_tags)
-                    headers.append("maintenance_tags")
+                    headers.append("Maintenance Tags")
                 tbl_list.append(data)
 
-        # sorting by state
-        tbl_list.sort(key=lambda x: x[0])
+        if len(tbl_list) == 0:
+            print(f"No instance with '{query}' found! Try again without a query.")
+            exit(0)
+          
+        # sorting by Launch Time
+        tbl_list.sort(key=lambda x: x[0], reverse=True)
 
         # Return pretty data
         print(tabulate(tbl_list, headers=headers, tablefmt="psql"))
@@ -53,13 +61,12 @@ def main():
     parser = argparse.ArgumentParser(description="Interrogate AWS EC2 and return pretty data")
     parser.add_argument("--profile", "-p", help="Which AWS profile to use", default="default")
     parser.add_argument("--region", "-r", help="Which AWS region to use", default="us-west-2")
-    parser.add_argument("--maintenance_tags", "-m", help="Output maintenance tags for instances", action="store_true", default=False)
+    parser.add_argument("--type", "-t", help="Which instance type", default=None)
     parser.add_argument("query", metavar="N", nargs='?', help="Search query", default=None)
     args = parser.parse_args()
 
     run = AWSInventoryTable(args.profile, args.region)
-    run.generate_table(args.query, args.maintenance_tags)
-
+    run.generate_table(args.query,args.type)
 
 if __name__ == "__main__":
     main()
