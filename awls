@@ -34,14 +34,16 @@ class AWSInventoryTable(object):
                         aws_maintenance_tags = tag['Value']
 
             if found:
-                if instance.key_name is not None:
-                    aws_key_name = instance.key_name[:20] + (instance.key_name[20:] and '..') 
-                data = [aws_name, instance.id, instance.private_ip_address, instance.public_ip_address, instance.instance_type, aws_key_name] 
-                headers = ["Name", "Instance ID","Private IP", "Public IP", "Type", "Key Name"]
+                aws_key_name = "" if instance.key_name is None else instance.key_name[:20] + (instance.key_name[20:] and '..') 
+                data = [instance.state["Name"], aws_name, instance.id, instance.private_ip_address, instance.public_ip_address, instance.instance_type, aws_key_name, instance.launch_time] 
+                headers = ["State", "Name", "Instance ID","Private IP", "Public IP", "Type", "Key Name", "Launched At"]
                 if maintenance_tags:
                     data.append(aws_maintenance_tags)
                     headers.append("maintenance_tags")
                 tbl_list.append(data)
+
+        # sorting by state
+        tbl_list.sort(key=lambda x: x[0])
 
         # Return pretty data
         print(tabulate(tbl_list, headers=headers, tablefmt="psql"))
