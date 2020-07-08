@@ -17,19 +17,17 @@ class AWSInventoryTable(object):
         
         for instance in instances:
             # Using a flag so we don't add data to the list we don't actually want
-            found = False
+            if query is None:
+                found = True
+                aws_name = ""
+            else:
+                found = False
             if instance.tags is not None:
                 for tag in instance.tags:
                     if tag['Key'] == "Name":
-                        if query:
+                        aws_name = tag['Value']
+                        if query is not None and query in tag['Value']:
                         # if a query was passed, try to find instances that match
-                            if query in tag['Value']:
-                                aws_name = tag['Value']
-                                found = True
-                            else:
-                                found = False
-                        else:
-                            aws_name = tag['Value']
                             found = True
 
                     if tag['Key'] == "Maintenance":
